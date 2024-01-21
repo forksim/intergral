@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract DiceGame {
+    address public owner;
+    uint256 public betAmount;
+    uint256 public targetNumber;
+    mapping(address => bool) public hasClaimed;
+
+    event BetPlaced(address indexed player, uint256 betAmount, uint256 targetNumber, bool isWinner);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only the owner can call this function");
+        _;
+    }
+
+    constructor(uint256 _betAmount, uint256 _targetNumber) {
+        owner = msg.sender;
+        betAmount = _betAmount;
+        targetNumber = _targetNumber;
+    }
+
+    function placeBet(uint256 guessedNumber) external payable {
+        require(msg.value == betAmount, "Incorrect bet amount");
+        require(guessedNumber >= 1 && guessedNumber <= 6, "Invalid guessed number");
+        require(!hasClaimed[msg.sender], "You have already claimed your prize");
+
+        uint256 diceResult = getRandomNumber();
+        bool isWinner = (diceResult == targetNumber);
+
+        if (isWinner) {
+            // Pay the prize to the winner
+            payable(msg.sender).transfer(betAmount * 2);
+        }
+
+        hasClaimed[msg.sender] = true;
+
+        emit BetPlaced(msg.sender, betAmount, guessedNumber, isWinner);
+    }
+
+    function getRandomNumber() internal view returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 6 + 1;
+    }
+
+    function withdrawFunds() external onlyOwner {
+        payable(owner).transfer(address(this).balance);
+    }
+}
