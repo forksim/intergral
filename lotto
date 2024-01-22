@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract SimpleLotto {
+    address public owner;
+    uint256 public ticketPrice;
+    uint256 public jackpot;
+    uint256 public constant numberOfDigits = 3;
+    
+    mapping(address => uint256[]) public tickets;
+    mapping(address => bool) public hasClaimed;
+
+    event TicketPurchased(address indexed player, uint256[] numbers);
+    event JackpotWon(address winner, uint256 amount);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only the owner can call this function");
+        _;
+    }
+
+    constructor(uint256 _ticketPrice) {
+        owner = msg.sender;
+        ticketPrice = _ticketPrice;
+    }
+
+    function buyTicket(uint256[] memory chosenNumbers) external payable {
+        require(msg.value == ticketPrice, "Incorrect ticket price");
+        require(chosenNumbers.length == numberOfDigits, "Invalid number of digits");
+        require(!hasClaimed[msg.sender], "You have already claimed your prize");
+
+        tickets[msg.sender] = chosenNumbers;
+
+        emit TicketPurchased(msg.sender, chosenNumbers);
+    }
+
+    function drawWinningNumbers() external onlyOwner {
+        require(address(this).balance > jackpot, "Not enough funds for the jackpot");
+
+        uint256[] memory winningNumbers = generateRandomNumbers();
+        distributePrizes(winningNumbers);
+
+        // Reset game state
+        jackpot = 0;
+    }
+
+    function distributePrizes(uint256[] memory winningNumbers) internal {
+        for (uint256 i = 0; i < tickets.length; i++) {
+            if (compareArrays(tickets[i], winningNumbers)) {
+                // Winner! Pay the jackpot to the winner
+                payable(msg.sender).transfer(jackpot);
+                hasClaimed[msg.sender] = true;
+
+                emit JackpotWon(msg.sender, jackpot);
+                return;
+            }
+        }
+    }
+
+    function compareArrays(uint256[] memory array1, uint256[] memory array2) internal pure returns (bool) {
+        if (array1.length != array2.length) {
+            return false;
+        }
+
+        for (uint256 i = 0; i < array1.length; i++) {
+            if (array1[i] != array2[i]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function generateRandomNumbers() internal view returns (uint256[] memory) {
+        uint256[] memory randomNumbers = new uint256[](numberOfDigits);
+
+        for (uint256 i = 0; i < numberOfDigits; i++) {
+            randomNumbers[i] = (uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, i))) % 10) + 1;
+        }
+
+        return randomNumbers;
+    }
+}
