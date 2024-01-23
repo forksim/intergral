@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+contract SimpleExchange is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    address public owner;
+    uint256 public feePercentage;
+    mapping(address => mapping(address => uint256)) public balances;
+    mapping(address => bool) public isAdmin;
+
+    event TokenDeposited(address indexed user, address indexed token, uint256 amount);
+    event TokenWithdrawn(address indexed user, address indexed token, uint256 amount);
+    event OrderPlaced(address indexed user, address indexed token, uint256 amount, uint256 price, bool isBuyOrder);
+    event OrderCancelled(address indexed user, address indexed token, uint256 amount, uint256 price, bool isBuyOrder);
+    event OrderExecuted(address indexed buyer, address indexed seller, address indexed token, uint256 amount, uint256 price);
+
+    modifier onlyOwnerOrAdmin() {
+        require(msg.sender == owner || isAdmin[msg.sender], "Not owner or admin");
+        _;
+    }
+
+    constructor(uint256 _feePercentage) {
+        owner = msg.sender;
+        feePercentage = _feePercentage;
+        isAdmin[msg.sender] = true;
+    }
+
+    function setFeePercentage(uint256 _feePercentage) external onlyOwnerOrAdmin {
+        require(_feePercentage <= 100, "Invalid fee percentage");
+        feePercentage = _feePercentage;
+    }
+
+    function addAdmin(address adminAddress) external onlyOwner {
+        isAdmin[adminAddress] = true;
+    }
+
+    function removeAdmin(address adminAddress) external onlyOwner {
+        isAdmin[adminAddress] = false;
+    }
+
+    function depositToken(address token, uint256 amount) external {
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        balances[msg.sender][token] += amount;
+        emit TokenDeposited(msg.sender, token, amount);
+    }
+
+    function withdrawToken(address token, uint256 amount) external nonReentrant {
+        require(balances[msg.sender][token] >= amount, "Insufficient balance");
+        balances[msg.sender][token] -= amount;
+        IERC20(token).safeTransfer(msg.sender, amount);
+        emit TokenWithdrawn(msg.sender, token, amount);
+    }
+
+    function placeOrder(address token, uint256 amount, uint256 price, bool isBuyOrder) external nonReentrant {
+        require(price > 0, "Price must be greater than zero");
+        require(amount > 0, "Amount must be greater than zero");
+        require(balances[msg.sender][token] >= amount, "Insufficient balance");
+
+        if (isBuyOrder) {
+            // For buy orders, check if the buyer has enough ETH
+            require(msg.value >= amount * price, "Insufficient ETH for the buy order");
+        } else {
+            // For sell orders, transfer the tokens to the contract
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        }
+
+        balances[msg.sender][token] -= amount;
+
+        emit OrderPlaced(msg.sender, token, amount, price, isBuyOrder);
+    }
+
+    function cancelOrder(address token, uint256 amount, uint256 price, bool isBuyOrder) external nonReentrant {
+        require(balances[msg.sender][token] >= amount, "Insufficient balance");
+
+        if (isBuyOrder) {
+            // Refund ETH for buy orders
+            payable(msg.sender).transfer(amount * price);
+        } else {
+            // Refund tokens for sell orders
+            IERC20(token).safeTransfer(msg.sender, amount);
+        }
+
+        balances[msg.sender][token] -= amount;
+
+        emit OrderCancelled(msg.sender, token, amount, price, isBuyOrder);
+    }
+
+    function executeOrder(
+        address buyer,
+        address seller,
+        address token,
+        uint256 amount,
+        uint256 price
+    ) external nonReentrant onlyOwnerOrAdmin {
+        require(balances[seller][token] >= amount, "Insufficient balance for seller");
+
+        uint256 feeAmount = (amount * feePercentage) / 100;
+        uint256 totalAmount = amount - feeAmount;
+
+        // Transfer tokens from seller to buyer
+        IERC20(token).safeTransferFrom(seller, buyer, totalAmount);
+
+        // Transfer fee to the owner
+        IERC20(token).safeTransferFrom(seller, owner, feeAmount);
+
+        emit OrderExecuted(buyer, seller, token, amount, price);
+    }
+}
