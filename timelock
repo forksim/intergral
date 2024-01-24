@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+contract TimeLock {
+    using SafeMath for uint256;
+
+    address public owner;
+    IERC20 public token;
+    uint256 public releaseTime;
+    uint256 public lockedAmount;
+
+    event TokensLocked(uint256 amount, uint256 releaseTime);
+    event TokensReleased(uint256 amount);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only the owner can call this function");
+        _;
+    }
+
+    constructor(IERC20 _token, uint256 _releaseTime, uint256 _lockedAmount) {
+        owner = msg.sender;
+        token = _token;
+        releaseTime = _releaseTime;
+        lockedAmount = _lockedAmount;
+    }
+
+    function lockTokens() external onlyOwner {
+        require(lockedAmount > 0, "Locked amount must be greater than zero");
+        require(token.allowance(owner, address(this)) >= lockedAmount, "Not enough allowance");
+
+        token.transferFrom(owner, address(this), lockedAmount);
+        emit TokensLocked(lockedAmount, releaseTime);
+    }
+
+    function releaseTokens() external onlyOwner {
+        require(block.timestamp >= releaseTime, "Release time has not arrived yet");
+
+        uint256 balance = token.balanceOf(address(this));
+        require(balance > 0, "No tokens to release");
+
+        token.transfer(owner, balance);
+        emit TokensReleased(balance);
+    }
+
+    function getRemainingTime() external view returns (uint256) {
+        if (block.timestamp >= releaseTime) {
+            return 0;
+        } else {
+            return releaseTime.sub(block.timestamp);
+        }
+    }
+}
