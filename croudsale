@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract Crowdsale is Ownable {
+    using SafeMath for uint256;
+    using SafeERC20 for IERC20;
+
+    IERC20 public token;
+    uint256 public rate; // 토큰 판매 가격 (1 이더당 토큰 수)
+    uint256 public minPurchase; // 최소 구매량
+    uint256 public maxPurchase; // 최대 구매량
+    uint256 public startTime; // 크라우드세일 시작 시간
+    uint256 public endTime; // 크라우드세일 종료 시간
+    uint256 public hardCap; // 목표 모금액
+    uint256 public totalPurchased; // 총 구매량
+    uint256 public totalContributors; // 총 참여자 수
+    uint256 public raisedAmount; // 현재까지 모금된 이더 금액
+    bool public isClosed; // 크라우드세일 종료 여부
+
+    event TokenPurchased(address indexed buyer, uint256 amount, uint256 value);
+
+    modifier onlyWhileOpen() {
+        require(block.timestamp >= startTime && block.timestamp <= endTime && !isClosed, "Crowdsale is not active");
+        _;
+    }
+
+    constructor(
+        IERC20 _token,
+        uint256 _rate,
+        uint256 _minPurchase,
+        uint256 _maxPurchase,
+        uint256 _startTime,
+        uint256 _endTime,
+        uint256 _hardCap
+    ) {
+        require(_token != IERC20(address(0)), "Invalid token address");
+        require(_rate > 0, "Invalid rate");
+        require(_minPurchase > 0, "Invalid min purchase amount");
+        require(_maxPurchase > _minPurchase, "Invalid max purchase amount");
+        require(_startTime > block.timestamp, "Invalid start time");
+        require(_endTime > _startTime, "Invalid end time");
+        require(_hardCap > 0, "Invalid hard cap");
+
+        token = _token;
+        rate = _rate;
+        minPurchase = _minPurchase;
+        maxPurchase = _maxPurchase;
+        startTime = _startTime;
+        endTime = _endTime;
+        hardCap = _hardCap;
+        isClosed = false;
+    }
+
+    function purchaseTokens() external payable onlyWhileOpen {
+        uint256 ethAmount = msg.value;
+        require(ethAmount >= minPurchase && ethAmount <= maxPurchase, "Invalid purchase amount");
+        require(raisedAmount.add(ethAmount) <= hardCap, "Hard cap reached");
+
+        uint256 tokenAmount = ethAmount.mul(rate);
+        token.safeTransfer(msg.sender, tokenAmount);
+
+        raisedAmount = raisedAmount.add(ethAmount);
+        totalPurchased = totalPurchased.add(tokenAmount);
+        totalContributors = totalContributors.add(1);
+
+        emit TokenPurchased(msg.sender, tokenAmount, ethAmount);
+    }
+
+    function withdrawFunds() external onlyOwner {
+        require(isClosed, "Crowdsale is still active");
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    function closeCrowdsale() external onlyOwner {
+        require(block.timestamp > endTime, "Crowdsale has not ended yet");
+        isClosed = true;
+    }
+}
