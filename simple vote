@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract SimpleVoting {
+    address public owner;
+    string public votingTopic;
+    mapping(address => bool) public hasVoted;
+    mapping(uint256 => uint256) public votesCount;
+
+    event VoteCasted(address indexed voter, uint256 option);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only the owner can call this function");
+        _;
+    }
+
+    constructor(string memory _votingTopic) {
+        owner = msg.sender;
+        votingTopic = _votingTopic;
+    }
+
+    function vote(uint256 option) external {
+        require(!hasVoted[msg.sender], "You have already voted");
+        require(option > 0, "Invalid option");
+
+        hasVoted[msg.sender] = true;
+        votesCount[option]++;
+
+        emit VoteCasted(msg.sender, option);
+    }
+
+    function getVoteCount(uint256 option) external view returns (uint256) {
+        require(option > 0, "Invalid option");
+
+        return votesCount[option];
+    }
+
+    function resetVotes() external onlyOwner {
+        for (uint256 i = 1; i <= 3; i++) {
+            votesCount[i] = 0;
+        }
+    }
+}
