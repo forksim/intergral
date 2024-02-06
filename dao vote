@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract DAOVoting is Ownable {
+    using SafeMath for uint256;
+
+    IERC20 public votingToken;
+    uint256 public proposalCount;
+    mapping(uint256 => Proposal) public proposals;
+    mapping(address => bool) public isMember;
+    mapping(address => uint256) public votes;
+
+    event ProposalCreated(uint256 indexed proposalId, string title, string description, address creator);
+    event Voted(uint256 indexed proposalId, address voter, uint256 votes);
+    event ProposalExecuted(uint256 indexed proposalId, address executor);
+
+    struct Proposal {
+        string title;
+        string description;
+        address creator;
+        uint256 voteDeadline;
+        uint256 votesFor;
+        uint256 votesAgainst;
+        bool executed;
+    }
+
+    modifier onlyMember() {
+        require(isMember[msg.sender], "You are not a member of the DAO");
+        _;
+    }
+
+    constructor(IERC20 _votingToken) {
+        votingToken = _votingToken;
+        isMember[owner()] = true; // Owner is initially a member
+    }
+
+    function createProposal(string memory title, string memory description, uint256 voteDurationDays) external onlyMember {
+        uint256 voteDeadline = block.timestamp + (voteDurationDays * 1 days);
+        proposals[proposalCount] = Proposal(title, description, msg.sender, voteDeadline, 0, 0, false);
+        emit ProposalCreated(proposalCount, title, description, msg.sender);
+        proposalCount++;
+    }
+
+    function vote(uint256 proposalId, uint256 votes) external onlyMember {
+        require(proposalId < proposalCount, "Invalid proposal ID");
+        require(block.timestamp < proposals[proposalId].voteDead
