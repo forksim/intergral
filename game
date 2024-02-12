@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+contract DiceGame is Ownable {
+    using SafeMath for uint256;
+
+    uint256 public betAmount;
+    uint256 public totalBetAmount;
+    uint256 public totalPlayers;
+    uint256 public winningNumber;
+    address public lastWinner;
+
+    event BetPlaced(address indexed player, uint256 betAmount, uint256 betNumber);
+    event GameResult(address indexed winner, uint256 winningNumber, uint256 reward);
+
+    constructor(uint256 _betAmount) {
+        betAmount = _betAmount;
+    }
+
+    function placeBet(uint256 betNumber) external payable {
+        require(msg.value == betAmount, "Incorrect bet amount");
+        require(betNumber >= 1 && betNumber <= 6, "Invalid bet number");
+
+        totalBetAmount = totalBetAmount.add(msg.value);
+        totalPlayers++;
+
+        uint256 randomNumber = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender, totalPlayers))) % 6 + 1;
+        if (randomNumber == betNumber) {
+            uint256 rewardAmount = betAmount.mul(5); // 5x reward for correct guess
+            payable(msg.sender).transfer(rewardAmount);
+            emit GameResult(msg.sender, randomNumber, rewardAmount);
+            lastWinner = msg.sender;
+        }
+
+        emit BetPlaced(msg.sender, msg.value, betNumber);
+    }
+
+    function withdrawFunds() external onlyOwner {
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    function setBetAmount(uint256 _betAmount) external onlyOwner {
+        betAmount = _betAmount;
+    }
+
+    function getContractBalance() external view returns (uint256) {
+        return address(this).balance;
+    }
+}
