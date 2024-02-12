@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+contract Auction is Ownable {
+    using SafeMath for uint256;
+
+    struct AuctionItem {
+        address seller;
+        uint256 startingPrice;
+        uint256 highestBid;
+        address highestBidder;
+        uint256 auctionEndTime;
+        bool ended;
+    }
+
+    mapping(uint256 => AuctionItem) public auctions;
+    uint256 public auctionCount;
+
+    event AuctionCreated(uint256 indexed auctionId, address indexed seller, uint256 startingPrice, uint256 auctionEndTime);
+    event HighestBidIncreased(uint256 indexed auctionId, address indexed bidder, uint256 amount);
+    event AuctionEnded(uint256 indexed auctionId, address indexed winner, uint256 highestBid);
+
+    modifier auctionExists(uint256 auctionId) {
+        require(auctionId < auctionCount, "Auction does not exist");
+        _;
+    }
+
+    modifier auctionNotEnded(uint256 auctionId) {
+        require(!auctions[auctionId].ended, "Auction has ended");
+        _;
+    }
+
+    constructor() {}
+
+    function createAuction(uint256 startingPrice, uint256 duration) external {
+        require(startingPrice > 0, "Starting price must be greater than zero");
+        require(duration > 0, "Auction duration must be greater than zero");
+
+        auctions[auctionCount] = AuctionItem(msg.sender, startingPrice, 0, address(0), block.timestamp + duration, false);
+        emit AuctionCreated(auctionCount, msg.sender, startingPrice, block.timestamp + duration);
+        auctionCount++;
+    }
+
+    function placeBid(uint256 auctionId) external payable auctionExists(auctionId) auctionNotEnded(auctionId) {
+        require(msg.sender != auctions[auctionId].seller, "Seller cannot bid on own auction");
+        require(msg.value > auctions[auctionId].highestBid, "Bid must be higher than current highest bid");
+
+        if (auctions[auctionId].highestBid != 0) {
+            payable(auctions[auctionId].highestBidder).transfer(auctions[auctionId].highestBid);
+        }
+
+        auctions[auctionId].highestBid = msg.value;
+        auctions[auctionId].highestBidder = msg.sender;
+
+        emit HighestBidIncreased(auctionId, msg.sender, msg.value);
+    }
+
+    function endAuction(uint256 auctionId) external onlyOwner auctionExists(auctionId) auctionNotEnded(auctionId) {
+        require(block.timestamp >= auctions[auctionId].auctionEndTime, "Auction has not ended yet");
+
+        auctions[auctionId].ended = true;
+
+        if (auctions[auctionId].highestBidder != address(0)) {
+            payable(auctions[auctionId].seller).transfer(auctions[auctionId].highestBid);
+            emit AuctionEnded(auctionId, auctions[auctionId].highestBidder, auctions[auctionId].highestBid);
+        } else {
+            emit AuctionEnded(auctionId, address(0), 0);
+        }
+    }
+
+    function withdrawBid(uint256 auctionId) external auctionExists(auctionId) auctionNotEnded(auctionId) {
+        require(msg.sender == auctions[auctionId].highestBidder, "Only the highest bidder can withdraw their bid");
+
+        uint256 amountToWithdraw = auctions[auctionId].highestBid;
+        auctions[auctionId].highestBid = 0;
+        auctions[auctionId].highestBidder = address(0);
+        payable(msg.sender).transfer(amountToWithdraw);
+
+        emit HighestBidIncreased(auctionId, msg.sender, 0);
+    }
+
+    function getAuctionDetails(uint256 auctionId)
+        external
+        view
+        returns (
+            address seller,
+            uint256 startingPrice,
+            uint256 highestBid,
+            address highestBidder,
+            uint256 auctionEndTime,
+            bool ended
+        )
+    {
+        require(auctionId < auctionCount, "Auction does not exist");
+
+        AuctionItem memory item = auctions[auctionId];
+        return (item.seller, item.startingPrice, item.highestBid, item.highestBidder, item.auctionEndTime, item.ended);
+    }
+} 
