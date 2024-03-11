@@ -1,0 +1,49 @@
+from solana.rpc.api import Client
+from solana.account import Account
+import json
+
+# Solana 네트워크 RPC 엔드포인트
+rpc_url = "https://api.mainnet-beta.solana.com"
+
+# 검증자 생성 함수
+def create_validator():
+    # Solana 네트워크에 연결
+    client = Client(rpc_url)
+
+    # 새로운 키쌍 생성
+    validator_account = Account()
+    validator_vote_account = Account()
+    validator_stake_account = Account()
+
+    # 검증자 생성
+    validator_identity = {
+        "identity_pubkey": validator_account.public_key(),
+        "vote_account_pubkey": validator_vote_account.public_key(),
+        "stake_account_pubkey": validator_stake_account.public_key()
+    }
+
+    # 검증자 정보 출력
+    print("새로운 검증자 생성:")
+    print("Identity Pubkey:", validator_identity["identity_pubkey"])
+    print("Vote Account Pubkey:", validator_identity["vote_account_pubkey"])
+    print("Stake Account Pubkey:", validator_identity["stake_account_pubkey"])
+
+    # 검증자 정보를 JSON 파일로 저장
+    with open("validator_identity.json", "w") as outfile:
+        json.dump([validator_identity], outfile)
+
+    # Solana 네트워크에 검증자 추가
+    print("네트워크에 검증자 추가 중...")
+    try:
+        client.create_validator(
+            validator_identity["identity_pubkey"],
+            validator_vote_account.public_key(),
+            validator_stake_account.public_key(),
+            validator_account
+        )
+        print("검증자가 성공적으로 추가되었습니다.")
+    except Exception as e:
+        print("검증자 추가 중 오류가 발생했습니다:", e)
+
+# 검증자 생성 함수 호출
+create_validator()
